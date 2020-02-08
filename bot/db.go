@@ -3,6 +3,8 @@ package main
 import (
 	"os"
 	"fmt"
+	"reflect"
+	"encoding/json"
 	"database/sql"
 	_ "github.com/lib/pq"
 )
@@ -63,15 +65,39 @@ func checkExistUser(username string) string {
 	
 }
 
-func getPlaces() []string {
+func checkExist(sqlData string, varName string) string {
+
+	var param string
+
+	db, err := sql.Open("postgres", dbInfo)
+	if err != nil {
+		fmt.Println("ERROR: failed connect to db")
+	}
+	defer db.Close()
+
+	row := db.QueryRow(sqlState, varName)
+
+	switch err := row.Scan(&param); err {
+	case sql.ErrNoRows:
+	  return ""
+	case nil:
+	  fmt.Println("Row exist")
+	default:
+	  panic(err)
+	}
+
+	return param
+}
+
+func sqlToJSON(sqlState string) ([]byte, error) {
+
+	var objects []map[string]interface{}
 
 	db, err := sql.Open("postgres", dbInfo)
 	if err != nil {
 		fmt.Println("ERROR: failed to connect to db")
 	}
 	defer db.Close()
-
-	sqlState := `SELECT group_tag FROM vk_data_grub_vkgroups`
 	
 	rows, err := db.Query(sqlState)
 
@@ -79,12 +105,44 @@ func getPlaces() []string {
 		fmt.Println(err)
 	}
 
-	grTags :=[]string{}
 	for rows.Next() {
-		var grTag string
-		rows.Scan(&grTag)
-		grTags = append(grTags, grTag)
+		columns, err := rows.ColumnTypes()
+		if err != nil {
+			fmt.Println(err)
+		}
+
+		values := make([]interface{}, len(columns))
+		object := map[string]interface{}{}
+		for i, column := range columns {
+			object[column.Name()] = reflect.New(column.ScanType()).Interface()
+			values[i] = object[column.Name()]
+		}
+	
+		err = rows.Scan(values...)
+		if err != nil {
+			fmt.Println(err)
+		}
+
+		objects = append(objects, object)
 	}
 
-	return grTags
+	return json.MarshalIndent(objects, "", "\t")
+
+}
+
+func updateUserCity(city string, username string) error {
+	db, err := sql.Open("postgres", dbInfo)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	data := `UPDATE tg_bot_users SET city_id = (SELECT id FROM tg_bot_cities WHERE city ILIKE $1) WHERE username = $2;`
+	
+	if _, err = db.Exec(data, city, `@`+username); err != nil {
+		return err
+	}
+
+	return nil
+
 }
