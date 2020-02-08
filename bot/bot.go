@@ -88,7 +88,7 @@ func main() {
 			city := update.Message.Text
 			userName := update.Message.Chat.UserName
 			sqlQuery := "SELECT city FROM tg_bot_cities WHERE city ILIKE $1"
-			existCity = checkExist(sqlQuery, city)
+			existCity := checkExist(sqlQuery, city)
 
 			if existCity != "" {
 				updateUserCity(city, userName)
